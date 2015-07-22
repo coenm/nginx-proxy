@@ -56,8 +56,8 @@ server {
 
 {{ range $host, $containers := groupByMulti $ "Env.VIRTUAL_HOST" "," }}
 
-upstream {{ $host }} {
 {{ range $container := $containers }}
+upstream {{ $host }}{{ $container.Env.VIRTUAL_CONTEXT }} {
 	{{ $addrLen := len $container.Addresses }}
 	{{/* If only 1 port exposed, use that */}}
 	{{ if eq $addrLen 1 }}
@@ -69,8 +69,9 @@ upstream {{ $host }} {
 		{{ $address := where $container.Addresses "Port" $port | first }}
 		{{ template "upstream" (dict "Container" $container "Address" $address) }}
 	{{ end }}
-{{ end }}
 }
+{{ end }}
+
 
 {{/* Get the VIRTUAL_PROTO defined by containers w/ the same vhost, falling back to "http" */}}
 {{ $proto := or (first (groupByKeys $containers "Env.VIRTUAL_PROTO")) "http" }}
@@ -119,13 +120,16 @@ server {
 	include {{ printf "/etc/nginx/vhost.d/%s" $host }};
 	{{ end }}
 
-	location / {
-		proxy_pass {{ $proto }}://{{ $host }};
-		{{ if (exists (printf "/etc/nginx/htpasswd/%s" $host)) }}
-		auth_basic	"Restricted {{ $host }}";
-		auth_basic_user_file	{{ (printf "/etc/nginx/htpasswd/%s" $host) }};
-		{{ end }}
-	}
+	{{ range $container := $containers }}
+	location /{{ $container.Env.VIRTUAL_CONTEXT }} {
+                {{ if $container.Env.VIRTUAL_CONTEXT }} rewrite /{{ $container.Env.VIRTUAL_CONTEXT }}(.*) /$1  break; {{ end }}
+                proxy_pass {{ $proto }}://{{ $host }}{{ $container.Env.VIRTUAL_CONTEXT }};
+                {{ if (exists (printf "/etc/nginx/htpasswd/%s" $host)) }}
+                auth_basic      "Restricted {{ $host }}";
+                auth_basic_user_file    {{ (printf "/etc/nginx/htpasswd/%s" $host) }};
+                {{ end }}
+        }
+	{{ end }}
 }
 {{ else }}
 
@@ -145,13 +149,16 @@ server {
 	include {{ printf "/etc/nginx/vhost.d/%s" $host }};
 	{{ end }}
 
-	location / {
-		proxy_pass {{ $proto }}://{{ $host }};
+        {{ range $container := $containers }}
+        location /{{ $container.Env.VIRTUAL_CONTEXT }} {
+		{{ if $container.Env.VIRTUAL_CONTEXT }} rewrite /{{ $container.Env.VIRTUAL_CONTEXT }}(.*) /$1  break; {{ end }}
+		proxy_pass {{ $proto }}://{{ $host }}{{ $container.Env.VIRTUAL_CONTEXT }};
 		{{ if (exists (printf "/etc/nginx/htpasswd/%s" $host)) }}
 		auth_basic	"Restricted {{ $host }}";
 		auth_basic_user_file	{{ (printf "/etc/nginx/htpasswd/%s" $host) }};
 		{{ end }}
 	}
+	{{ end }}
 }
 
 {{ if (and (exists "/etc/nginx/certs/default.crt") (exists "/etc/nginx/certs/default.key")) }}
