@@ -152,7 +152,7 @@ server {
         {{ range $container := $containers }}
         location /{{ $container.Env.VIRTUAL_CONTEXT }} {
 	#	{{ if $container.Env.VIRTUAL_CONTEXT }} rewrite /{{ $container.Env.VIRTUAL_CONTEXT }}(.*) /$1  break; {{ end }}
-		proxy_pass {{ $proto }}://{{ $host }};
+		proxy_pass {{ $proto }}://{{ $host }}{{ $container.Env.VIRTUAL_CONTEXT }};
 		{{ if (exists (printf "/etc/nginx/htpasswd/%s" $host)) }}
 		auth_basic	"Restricted {{ $host }}";
 		auth_basic_user_file	{{ (printf "/etc/nginx/htpasswd/%s" $host) }};
